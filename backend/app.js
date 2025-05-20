@@ -18,9 +18,8 @@ const port = process.env.PORT || 5000;
 connectDB();
 
 const allowedOrigins = [
-  "http://localhost:3000", // Allow local frontend during development
-  "https://main.d1sj7cd70hlter.amplifyapp.com",
-  "https://expense-tracker-app-three-beryl.vercel.app",
+  "http://localhost:3000",
+  "https://expense-tracker-app-2qut.onrender.com",
 ];
 
 // Middleware
