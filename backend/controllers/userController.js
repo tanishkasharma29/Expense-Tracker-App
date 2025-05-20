@@ -1,138 +1,95 @@
 import User from "../models/UserSchema.js";
-import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 
-export const registerControllers = async (req, res, next) => {
-    try{
-        const {name, email, password} = req.body;
+// Generate JWT Token
+const generateToken = (user) => {
+  return jwt.sign(
+    { id: user._id, email: user.email, name: user.name },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+};
 
-        // console.log(name, email, password);
+export const registerControllers = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
 
-        if(!name || !email || !password){
-            return res.status(400).json({
-                success: false,
-                message: "Please enter All Fields",
-            }) 
-        }
-
-        let user = await User.findOne({email});
-
-        if(user){
-            return res.status(409).json({
-                success: false,
-                message: "User already Exists",
-            });
-        }
-
-        const salt = await bcrypt.genSalt(10);
-
-        const hashedPassword = await bcrypt.hash(password, salt);
-
-        // console.log(hashedPassword);
-
-        let newUser = await User.create({
-            name, 
-            email, 
-            password: hashedPassword, 
-        });
-
-        return res.status(200).json({
-            success: true,
-            message: "User Created Successfully",
-            user: newUser
-        });
-    }
-    catch(err){
-        return res.status(500).json({
-            success: false,
-            message: err.message,
-        });
+    // Check if user exists
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ message: "User already exists" });
     }
 
-}
-export const loginControllers = async (req, res, next) => {
-    try{
-        const { email, password } = req.body;
+    const user = await User.create({ name, email, password });
 
-        // console.log(email, password);
-  
-        if (!email || !password){
-            return res.status(400).json({
-                success: false,
-                message: "Please enter All Fields",
-            }); 
-        }
-    
-        const user = await User.findOne({ email });
-    
-        if (!user){
-            return res.status(401).json({
-                success: false,
-                message: "User not found",
-            }); 
-        }
-    
-        const isMatch = await bcrypt.compare(password, user.password);
-    
-        if (!isMatch){
-            return res.status(401).json({
-                success: false,
-                message: "Incorrect Email or Password",
-            }); 
-        }
+    const token = generateToken(user);
 
-        delete user.password;
+    res.status(201).json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        isAvatarImageSet: user.isAvatarImageSet,
+        avatarImage: user.avatarImage,
+      },
+      token,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
-        return res.status(200).json({
-            success: true,
-            message: `Welcome back, ${user.name}`,
-            user,
-        });
+export const loginControllers = async (req, res) => {
+  try {
+    const { email, password } = req.body;
 
+    // Select password explicitly because schema excludes it by default
+    const user = await User.findOne({ email }).select("+password");
+    if (!user) {
+      return res.status(400).json({ message: "Invalid email or password" });
     }
-    catch(err){
-        return res.status(500).json({
-            success: false,
-            message: err.message,
-        });
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid email or password" });
     }
-}
 
-export const setAvatarController = async (req, res, next)=> {
-    try{
+    const token = generateToken(user);
 
-        const userId = req.params.id;
-       
-        const imageData = req.body.image;
-      
-        const userData = await User.findByIdAndUpdate(userId, {
-            isAvatarImageSet: true,
-            avatarImage: imageData,
-        },
-        { new: true });
+    res.status(200).json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        isAvatarImageSet: user.isAvatarImageSet,
+        avatarImage: user.avatarImage,
+      },
+      token,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
-        return res.status(200).json({
-            isSet: userData.isAvatarImageSet,
-            image: userData.avatarImage,
-          });
+export const setAvatarController = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { avatarImage } = req.body;
 
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    }catch(err){
-        next(err);
-    }
-}
+    user.avatarImage = avatarImage;
+    user.isAvatarImageSet = true;
+    await user.save();
 
-export const allUsers = async (req, res, next) => {
-    try{
-        const user = await User.find({_id: {$ne: req.params.id}}).select([
-            "email",
-            "username",
-            "avatarImage",
-            "_id",
-        ]);
-
-        return res.json(user);
-    }
-    catch(err){
-        next(err);
-    }
-}
+    res.status(200).json({
+      isSet: user.isAvatarImageSet,
+      image: user.avatarImage,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
